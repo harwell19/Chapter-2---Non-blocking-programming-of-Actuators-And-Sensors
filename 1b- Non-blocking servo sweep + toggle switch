@@ -1,0 +1,107 @@
+/*
+  Project: 02-Actuators-And-Sensors/
+  			01-Servo-Sweeper-NonBlocking
+  Feature: Smooth non-blocking servo sweep state machine with toggle switch
+  Author: Harwell Mejia
+  Tutor: GEMINI and ChatGPT
+  Hardware:
+  - Arduino UNO
+  - Standard Servo Motor (Signal Pin -> D3)
+  - Push Button x1
+  - LEDs x2
+  compiled and simulated in ThinkerCad
+*/
+#include <Servo.h>
+Servo myServo;
+
+#define servoPin 3
+#define BTN_SW 2  
+#define redPin 4
+#define bluePin 5
+
+//== Global variables ==
+bool systemState = LOW;
+
+int currentPos = 0; //Servo shaft current angle
+int stepInc = 1;   //Servo step increment
+const int maxAng = 175;
+const int minAng = 0;
+
+
+//== Non- blocking timer Parameter
+//1. Toggle switch
+bool lastBTNRead = HIGH;
+bool stableBTNState = HIGH;
+unsigned long lastBTNTime = 0;
+const unsigned long btnInterval = 50;
+
+//2. Servo
+unsigned long lastStepTime = 0;
+const unsigned long stepInterval = 15;
+
+void setup(){
+  Serial.begin(115200);
+  pinMode(BTN_SW, INPUT_PULLUP);
+  pinMode(redPin, OUTPUT);
+  pinMode(bluePin, OUTPUT);
+  myServo.attach(servoPin);
+  
+  //Starting point
+  myServo.write(currentPos);
+  digitalWrite(redPin, !systemState);
+  digitalWrite(bluePin, systemState); 
+  Serial.println("\nWelcome to Arduino - Non-blocking series");
+  Serial.println("By Harwell");
+  Serial.println("System: OFF");
+}
+
+void loop(){
+  //==Task 1 - Non-blocking toggle switch
+  //1.1 Reading electrical signal
+  bool currentBTNRead = digitalRead(BTN_SW);
+  //1.2 Detect electrical change
+  if(currentBTNRead != lastBTNRead){
+    lastBTNRead = currentBTNRead;
+    lastBTNTime = millis();
+  }
+  //1.3 Check debounce time
+  if(millis() - lastBTNTime >= btnInterval){
+    //1.4 Detect stable state
+    if(currentBTNRead != stableBTNState){
+      stableBTNState = currentBTNRead;
+      //1.5 Valid button press
+      if(stableBTNState == LOW){
+        systemState = !systemState;
+        digitalWrite(bluePin, systemState);
+        digitalWrite(redPin,!systemState);
+        Serial.print("System: ");
+        Serial.println(systemState? "ON":"OFF");
+      }
+      else{
+        currentPos = 0;
+        myServo.write(currentPos);
+      }
+    }
+  }
+  //=== Task 2 - non-blocking Servo sweep
+  if(systemState == HIGH){
+    unsigned long currentStepTime = millis();
+    if(currentStepTime - lastStepTime >= stepInterval){
+      lastStepTime += stepInterval;
+      //==Set angle boundaries
+      currentPos = constrain(currentPos + stepInc, minAng, maxAng);
+      myServo.write(currentPos);
+      
+      if(currentPos >= maxAng){
+        stepInc = -1;
+      }
+      if(currentPos <= minAng){
+        stepInc = +1;
+      }
+      
+      //==Telemetry=
+      Serial.print("Servo ang: ");
+      Serial.println(currentPos);
+    }
+  }
+}
