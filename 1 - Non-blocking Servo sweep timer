@@ -1,0 +1,55 @@
+/*
+  Project: 02-Actuators-And-Sensors/
+  			01-Servo-Sweeper-NonBlocking
+  Feature: Smooth non-blocking servo sweep state machine
+  Author: Harwell Mejia
+  Tutor: GEMINI
+  Hardware:
+  - Arduino UNO
+  - Standard Servo Motor (Signal Pin -> D3)
+  compiled and simulated in ThinkerCad
+*/
+#include <Servo.h>
+Servo myServo;
+
+//== Define objects
+#define servoPin 3
+
+//== Global variables
+int currentPos = 0; //Current shaft position
+int stepInc = 1;   // Step delta position
+const int minAng = 0;
+const int maxAng = 175;
+
+//== Non-blocking timer 
+unsigned long lastStepTime = 0;
+const unsigned long stepInterval = 15;
+
+void setup(){
+  Serial.begin(115200);
+  myServo.attach(servoPin);
+  myServo.write(currentPos);
+}
+
+void loop(){
+  unsigned long currentStepTime = millis();
+  //==Task 1 - Non-blocking timer
+  if(currentStepTime - lastStepTime >= stepInterval){
+    lastStepTime += stepInterval;
+    
+    //==Task 2 - Assigning value to position
+    currentPos = constrain(currentPos + stepInc, minAng, maxAng);
+    myServo.write(currentPos);
+    
+    if(currentPos >= maxAng){
+      stepInc = -1;
+    }
+    
+    else if(currentPos <= minAng){
+      stepInc = +1;
+    }
+    //== Telemetry ==
+    Serial.print("Shaft Angle: ");
+    Serial.println(currentPos);
+  }
+}
