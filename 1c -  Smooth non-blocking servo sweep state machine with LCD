@@ -1,0 +1,83 @@
+/*
+  Project: 02-Actuators-And-Sensors/
+  			01-Servo-Sweeper-NonBlocking
+  Feature: 
+   - Smooth non-blocking servo sweep state machine
+   - non-blocking LCD refresh 
+  Author: Harwell Mejia
+  Tutor: GEMINI
+  Hardware:
+  - Arduino UNO
+  - Standard Servo Motor (Signal Pin -> D3)
+  - LCD with I2C driver
+  Date:
+  2026/08/20
+  compiled and simulated in ThinkerCad
+*/
+#include <Wire.h>
+#include <LiquidCrystal_I2C.h>
+#include <Servo.h>
+#define servoPin 3
+
+LiquidCrystal_I2C lcd(0x27, 16,2);
+Servo myServo;
+
+//==Global parameters ==
+int currentPos = 0;
+int stepInc = 1;
+const int minAng = 0;
+const int maxAng = 175;
+
+//==Non-blocking Servo sweep timer
+unsigned long lastStepTime = 0;
+const unsigned long stepInterval = 10;
+
+//==Non- blocking lcd refresh parameters
+unsigned long lastLCDTime = 0;
+const unsigned long lcdInterval = 50;
+
+void setup(){
+  Serial.begin(115200);
+  myServo.attach(servoPin);
+  lcd.init();
+  lcd.backlight();
+  
+  //Initial state
+  myServo.write(currentPos);
+  lcd.setCursor(0,0);
+  lcd.print("Hi Arduino");
+}
+
+void loop(){
+  //===Task 1 - Non-blocking Servo sweep timer
+  unsigned long currentStepTime = millis();
+  if(currentStepTime - lastStepTime >= stepInterval){
+    lastStepTime += stepInterval;
+    
+    currentPos = constrain(currentPos + stepInc, minAng, maxAng);
+    myServo.write(currentPos);
+    
+    if(currentPos >= maxAng){
+      stepInc = -1;
+    }
+    if(currentPos <= minAng){
+      stepInc = +1;
+    }
+    
+    Serial.print("Servo Ang: ");
+    Serial.println(currentPos);
+    lcd.print("   ");
+  }
+  
+  //===Task 2 - Non-blocking lcd refresh===
+  unsigned long currentLCDTime = millis();
+  if(currentLCDTime - lastLCDTime >= lcdInterval){
+    lastLCDTime += lcdInterval;
+   
+    lcd.setCursor(0,1);
+    lcd.print("Servo Ang: ");
+    lcd.print(currentPos);
+    lcd.print("  "); // Clear remaining digits on 3-to-2 digit drops
+  }
+}
+  
