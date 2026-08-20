@@ -1,0 +1,133 @@
+/*
+  Project: 02-Actuators-And-Sensors/
+  			01-Servo-Sweeper-NonBlocking
+  Feature: 
+   - Smooth non-blocking servo sweep state machine
+   - non-blocking LCD refresh 
+   - Non- blocking toggle switch
+  Author: Harwell Mejia
+  Tutor: GEMINI
+  Hardware:
+  - Arduino UNO
+  - Standard Servo Motor (Signal Pin -> D3)
+  - LCD with I2C driver
+  - Push button x1
+  - LEDs x2
+  Date:
+  2026/08/20
+  compiled and simulated in ThinkerCad
+*/
+#include <Wire.h>
+#include <LiquidCrystal_I2C.h>
+#include <Servo.h>
+#define BTN_SWITCH 2
+#define servoPin 3
+#define redPin 4
+#define bluePin 5
+
+LiquidCrystal_I2C lcd(0x27, 16, 2);
+Servo myServo;
+
+//==Global variables==
+bool systemState = LOW;
+
+int currentStepPos = 0;
+int stepAng = 1; // degree per steps
+const int minAng = 0;
+const int maxAng = 175;
+
+//==Non-blocking Servo sweep parameters==
+unsigned long lastStepTime = 0;
+const unsigned long stepInterval = 15;
+
+//==Non-blocking lcd refresh parameters ==
+unsigned long lastLCDTime = 0;
+const unsigned long lcdInterval = 50;
+
+//==Non-blocking toggle switch timer parameters==
+bool lastBTNRead = HIGH;
+bool stableBTNState = HIGH;
+unsigned long BTNBounceTime = 0;
+const unsigned long BTNDebounceDelay = 50;
+
+void setup(){
+  Serial.begin(115200);
+  pinMode(BTN_SWITCH, INPUT_PULLUP);
+  pinMode(redPin, OUTPUT);
+  pinMode(bluePin, OUTPUT);
+  myServo.attach(servoPin);
+  lcd.init();
+  lcd.backlight();
+ 
+  //starting point
+  myServo.write(currentStepPos);
+  digitalWrite(redPin, !systemState);
+  digitalWrite(bluePin, systemState);
+  lcd.setCursor(0,0);
+  lcd.print("System OFF");
+}
+
+void loop(){
+  //=== Task 1 - Non-blocking toggle switch timer
+  unsigned long currentBTNRead = digitalRead(BTN_SWITCH);
+  if(currentBTNRead != lastBTNRead){
+    lastBTNRead = currentBTNRead;
+    BTNBounceTime = millis();
+  }
+  if(millis() - BTNBounceTime >= BTNDebounceDelay){
+    if(currentBTNRead != stableBTNState){
+      stableBTNState = currentBTNRead;
+      if(stableBTNState == LOW){
+        systemState = !systemState;
+        lcd.setCursor(0,0);
+        lcd.print("System Ready");
+        
+        digitalWrite(redPin, !systemState);
+        digitalWrite(bluePin, systemState);   
+        
+        if(systemState == HIGH){
+          lcd.setCursor(0,0);
+          lcd.print("System: Ready");
+        }
+        else{
+          currentStepPos = 0;
+          myServo.write(currentStepPos);
+          lcd.setCursor(0,0);
+          lcd.print("System: OFF  ");
+          lcd.setCursor(0,1);
+          lcd.print("Servo Ang: ");
+          lcd.print(currentStepPos);
+          lcd.print("    ");
+        }
+      }
+    }
+  }
+  if(systemState == HIGH){
+    unsigned long currentStepTime = millis();
+    if(currentStepTime - lastStepTime >= stepInterval){
+      lastStepTime += stepInterval;
+      
+      currentStepPos = constrain(currentStepPos + stepAng, minAng, maxAng);
+      myServo.write(currentStepPos);
+      if(currentStepPos >= maxAng){
+        stepAng = -1;
+      }
+      if(currentStepPos <= minAng){
+        stepAng = 1;
+      }
+      
+      Serial.print("Servo ang: ");
+      Serial.println(currentStepPos);
+    }
+    
+    unsigned long currentLCDTime = millis();
+    if(currentLCDTime -lastLCDTime >= lcdInterval){
+      lastLCDTime += lcdInterval;
+      
+      lcd.setCursor(0,1);
+      lcd.print("Servo Ang: ");
+      lcd.print(currentStepPos);    
+      lcd.print("   ");
+    }
+  }
+}
