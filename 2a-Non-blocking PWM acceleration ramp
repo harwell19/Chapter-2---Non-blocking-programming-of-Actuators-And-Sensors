@@ -1,0 +1,77 @@
+/*
+  Project: 02-Actuators-And-Sensors/02-DC-Motor-L298N-Speed-Control
+  Feature: Non-blocking PWM acceleration/deceleration ramp state machine
+  Author: Harwell Mejia
+  Tutor : GEMINI
+  Date:　2026/08/21
+  Hardware:
+  - Arduino UNO
+  - L293D Motor Driver + DC Motor
+  - Pins: ENA -> D3 (PWM), IN1 -> D4, IN2 -> D5
+*/
+#define ENA_PIN 3 //PWM Variable speed pin
+#define IN3_PIN 5
+#define IN4_PIN 4
+
+//==Motor speed state variables
+int currentSpeed = 0;
+int speedStep = 10;
+const int maxSpeed = 255;
+const int minSpeed = 0;
+bool isForward = true;
+
+//==Non-blocking timer
+unsigned long lastRampTime = 0;
+const unsigned long rampInterval = 20;
+
+void setMotorDirection(bool forward){
+  if(isForward){
+    digitalWrite(IN3_PIN, HIGH);
+    digitalWrite(IN4_PIN, LOW);
+    analogWrite(ENA_PIN, currentSpeed);
+  }
+  else{
+    digitalWrite(IN3_PIN, LOW);
+    digitalWrite(IN4_PIN, HIGH);
+    analogWrite(ENA_PIN, currentSpeed);
+  }
+}
+
+void setup(){
+  Serial.begin(9600);
+  pinMode(ENA_PIN, OUTPUT);
+  pinMode(IN3_PIN, OUTPUT);
+  pinMode(IN4_PIN, OUTPUT);
+  
+  setMotorDirection(isForward);
+  analogWrite(ENA_PIN, currentSpeed);
+}
+
+void loop(){
+  //==Non-blocking timer for PWM DC Motor 
+  unsigned long currentRampTime = millis();
+  if(currentRampTime - lastRampTime >= rampInterval){
+    lastRampTime += rampInterval;
+    
+    currentSpeed = constrain(currentSpeed + speedStep, minSpeed, maxSpeed);
+    analogWrite(ENA_PIN, currentSpeed);
+      
+    //== Set motor direction
+    if(currentSpeed >= maxSpeed){
+      speedStep *= -1;
+      Serial.println("Max speed reached, reverse direction");
+    }
+    else if(currentSpeed <= minSpeed){
+      speedStep *= -1;
+      isForward = !isForward;
+      Serial.println("Min speed reached, reverse direction");
+    }
+       
+    //Telemetry
+    unsigned int rpm = (16530./255.)*currentSpeed;
+    Serial.print("PWM Value: ");
+    Serial.print(currentSpeed);
+    Serial.print(" | ");
+    Serial.println(rpm);
+  }
+}
