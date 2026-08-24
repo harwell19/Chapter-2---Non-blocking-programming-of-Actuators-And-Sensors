@@ -25,15 +25,13 @@ unsigned long lastRampTime = 0;
 const unsigned long rampInterval = 20;
 
 void setMotorDirection(bool forward){
-  if(isForward){
+  if(forward){
     digitalWrite(IN3_PIN, HIGH);
     digitalWrite(IN4_PIN, LOW);
-    analogWrite(ENA_PIN, currentSpeed);
   }
   else{
     digitalWrite(IN3_PIN, LOW);
     digitalWrite(IN4_PIN, HIGH);
-    analogWrite(ENA_PIN, currentSpeed);
   }
 }
 
@@ -45,6 +43,8 @@ void setup(){
   
   setMotorDirection(isForward);
   analogWrite(ENA_PIN, currentSpeed);
+  Serial.println("\nWelcomr to Arduino - Non-blocking series");
+  Serial.println("Harwell");
 }
 
 void loop(){
@@ -57,13 +57,14 @@ void loop(){
     analogWrite(ENA_PIN, currentSpeed);
       
     //== Set motor direction
-    if(currentSpeed >= maxSpeed){
-      speedStep *= -1;
-      Serial.println("Max speed reached, reverse direction");
+    if(currentSpeed >= maxSpeed && speedStep >0){
+      speedStep = -10;
+      Serial.println("Max speed reached, breaking");
     }
-    else if(currentSpeed <= minSpeed){
-      speedStep *= -1;
+    else if(currentSpeed <= minSpeed && speedStep < 0){
+      speedStep = 10;
       isForward = !isForward;
+      setMotorDirection(isForward);
       Serial.println("Min speed reached, reverse direction");
     }
        
@@ -71,7 +72,7 @@ void loop(){
     unsigned int rpm = (16530./255.)*currentSpeed;
     Serial.print("PWM Value: ");
     Serial.print(currentSpeed);
-    Serial.print(" | ");
+    Serial.print(" | RPM: ");
     Serial.println(rpm);
   }
 }
