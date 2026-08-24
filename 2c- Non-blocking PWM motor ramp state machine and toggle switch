@@ -1,0 +1,140 @@
+/*
+  Project: 02-Actuators-And-Sensors/02-DC-Motor-L298N-Speed-Control
+  Feature:
+  Non-blocking PWM acceleration/deceleration ramp state machine with toggle switch
+  Author: Harwell Mejia
+  Tutor : GEMINI
+  Date:　2026/08/24
+  Hardware:
+  - Arduino UNO
+  - L293D Motor Driver + DC Motor
+  - Pins: ENA -> D3 (PWM), IN1 -> D4, IN2 -> D5
+  - Push button x1
+*/
+#define ENA_PIN 3 //PWM Variable speed pin
+#define IN3_PIN 5
+#define IN4_PIN 4
+#define	BTN_SW 6
+#define	redPin 8
+#define	greenPin 9
+//== Global state==
+bool systemState = LOW;
+
+//== Motor state parameters ==
+int currentSpeed = 0;
+int speedStep = 10;
+const int minSpeed = 0;
+const int maxSpeed = 255;
+bool isForward = true;
+
+//== Motor non-blocking timer parameters ==
+unsigned long lastStepTime = 0;
+const unsigned long stepInterval = 100;
+
+//==Toggle switch non blocking parameters ==
+bool lastBTNRead = HIGH;
+bool stableBTNState = HIGH;
+unsigned long btnBounceTime = 0;
+const unsigned long btnDebounceDelay = 50;
+
+void setMotorDirection(bool Forward){
+  if(Forward){
+  //  analogWrite(ENA_PIN, currentSpeed);
+    digitalWrite(IN3_PIN, HIGH);
+    digitalWrite(IN4_PIN, LOW);
+  }
+  else{
+ //   analogWrite(ENA_PIN, currentSpeed);
+    digitalWrite(IN3_PIN, LOW);
+    digitalWrite(IN4_PIN, HIGH);
+  }
+}
+
+void setup(){
+  Serial.begin(115200);
+  pinMode(BTN_SW, INPUT_PULLUP);
+  pinMode(ENA_PIN, OUTPUT);
+  pinMode(IN3_PIN, OUTPUT);
+  pinMode(IN4_PIN, OUTPUT);
+  pinMode(redPin, OUTPUT);
+  pinMode(greenPin, OUTPUT);
+  
+  setMotorDirection(isForward);
+  analogWrite(ENA_PIN, currentSpeed);
+  digitalWrite(redPin, !systemState);
+  digitalWrite(greenPin, systemState);
+  Serial.println("\nWelcome to Arduino - Non-blocking Programming Serie");
+  Serial.println("By Harwell");
+}
+
+void loop(){
+  //===Task 1 - Non-blocking toggle switch
+  //1.1 Read electrical button state
+  bool currentBTNRead = digitalRead(BTN_SW);
+  
+  //1.2 Detect electrical change
+  if(currentBTNRead != lastBTNRead){
+    lastBTNRead = currentBTNRead;
+    btnBounceTime = millis();
+  }
+  //1.3 Check bounce time
+  if(millis() - btnBounceTime >= btnDebounceDelay){
+    //1.4 Check stable state
+    if(currentBTNRead != stableBTNState){
+      
+      stableBTNState = currentBTNRead;
+      //1.5 Valid button press
+      if(stableBTNState == LOW){
+        systemState = !systemState;
+        digitalWrite(greenPin, systemState);
+        digitalWrite(redPin, !systemState);
+        Serial.print("System: ");
+        Serial.println(systemState? "ON":"OFF");
+        
+        if(systemState == HIGH){
+          lastStepTime = millis(); //Reset timer when startup
+          setMotorDirection(isForward);
+        }
+        else{
+          currentSpeed = 0;
+          analogWrite(ENA_PIN, currentSpeed);
+          digitalWrite(IN3_PIN, LOW);
+          digitalWrite(IN4_PIN, LOW);
+        }
+      }
+    }
+  }
+  if(systemState == HIGH){
+    //==Task 2 - Non-blocking PWM motor turnong
+    unsigned long currentStepTime = millis();
+    if(currentStepTime - lastStepTime >= stepInterval){
+      lastStepTime += stepInterval;
+      
+      // Set speed limit and direction
+      currentSpeed = constrain(currentSpeed + speedStep, minSpeed, maxSpeed);
+      analogWrite(ENA_PIN, currentSpeed);
+      
+      
+      if(currentSpeed >= maxSpeed && speedStep > 0){
+        currentSpeed = maxSpeed;
+        speedStep = -10; 
+        Serial.println("Max speed reached, Braking");
+      }
+      else if(currentSpeed <= 0 && speedStep < 0){
+        currentSpeed = minSpeed;
+        speedStep = 10;
+        isForward = !isForward;
+        setMotorDirection(isForward);
+        Serial.println("Min speed reached, reverse direction");
+      }
+      
+      //Telemetry
+      unsigned int currentRPM = (16500./255.)*currentSpeed;
+      Serial.print("Speed RPM: ");
+      Serial.print(currentRPM);
+      Serial.print(" | ");
+      Serial.println(currentSpeed);
+                       
+    }
+  }
+}
