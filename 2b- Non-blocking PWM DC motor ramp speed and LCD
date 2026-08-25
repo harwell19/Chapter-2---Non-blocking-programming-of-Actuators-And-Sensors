@@ -15,34 +15,32 @@
 */
 #include <Wire.h>
 #include <LiquidCrystal_I2C.h>
-#define ENA_PIN 3 //PWM Variable speed pin
+#define ENA_PIN 3
 #define IN3_PIN 5
 #define IN4_PIN 4
 
 LiquidCrystal_I2C lcd(0x27, 16, 2);
-
-//==Motor speed state parameters
+//==Motor state parameters ==
 int currentSpeed = 0;
-int speedStep = 5;
+int speedStep = 10;
+const int speedInterval = 10;
 const int minSpeed = 0;
-const int maxSpeed = 255;
+const int maxSpeed = 255; //PWM DC voltage reading speed
 bool isForward = true;
 
-//==Non-blocking timer parameter
-unsigned long lastRampTime = 0;
-const unsigned long rampInterval = 30;
+//== Non-blocking timer parameter ==
+unsigned long lastStepTime = 0;
+const unsigned long stepInterval = 20;
 
 unsigned long lastLCDTime = 0;
 const unsigned long lcdInterval = 50;
 
 void setMotorDirection(bool forward){
   if(forward){
-    analogWrite(ENA_PIN, currentSpeed);
     digitalWrite(IN3_PIN, HIGH);
     digitalWrite(IN4_PIN, LOW);
   }
   else{
-    analogWrite(ENA_PIN, currentSpeed);
     digitalWrite(IN3_PIN, LOW);
     digitalWrite(IN4_PIN, HIGH);
   }
@@ -53,47 +51,68 @@ void setup(){
   pinMode(ENA_PIN, OUTPUT);
   pinMode(IN3_PIN, OUTPUT);
   pinMode(IN4_PIN, OUTPUT);
+  
   lcd.init();
   lcd.backlight();
-  
-  setMotorDirection(isForward);
-  analogWrite(ENA_PIN, currentSpeed);
   lcd.setCursor(0,0);
-  lcd.print("Speed state");
+  lcd.print("Hi Arduino");
   
-  lcd.setCursor(13,0);
-  lcd.print("PWM");
+  analogWrite(ENA_PIN, currentSpeed);
+  Serial.println("\nWelcome to Arduino - Non-blocking Series");
+  Serial.println("By Harwell Mejia");
 }
 
 void loop(){
-  unsigned long currentRampTime = millis();
-  if(currentRampTime - lastRampTime >= rampInterval){
-    lastRampTime += rampInterval;
+  //==Task 1 - Non-blocking PWM timer
+  unsigned long currentStepTime = millis();
+  if(currentStepTime - lastStepTime >= stepInterval){
+    lastStepTime += stepInterval;
     
     currentSpeed = constrain(currentSpeed + speedStep, minSpeed, maxSpeed);
     analogWrite(ENA_PIN, currentSpeed);
     
-    if(currentSpeed >= maxSpeed){
-      speedStep = -5;
-      Serial.println("Max speed reached");
-      lcd.setCursor(0,1);
-      lcd.print("Max Speed");
+    if(currentSpeed >= maxSpeed && speedStep > 0){
+      currentSpeed = maxSpeed;
+      speedStep = -speedInterval;
+      Serial.println("Max speed Reached, Breaking...");
     }
-    else if(currentSpeed <= minSpeed){
-      speedStep = 5;
+    
+    else if(currentSpeed <= minSpeed && speedStep < 0){
+      currentSpeed = minSpeed;
+      speedStep = speedInterval;
       isForward = !isForward;
       setMotorDirection(isForward);
-      Serial.println("Min speed reached");
-      lcd.setCursor(0,1);
-      lcd.print("Min Speed");
+      Serial.println("Min speed Reached, Reverse"); 
     }
+    
+    //==Telemetry==
+    unsigned int currentRPM = (16500./255.)*currentSpeed;
+    Serial.print("Speed: ");
+    Serial.print(currentRPM);
+    Serial.print("RPM");
+    Serial.print(" | ");
+    Serial.print("PWM: ");
+    Serial.println(currentSpeed);
   }
+  
+  //==Task 2- Non- blocking LCD refresh
   unsigned long currentLCDTime = millis();
   if(currentLCDTime - lastLCDTime >= lcdInterval){
     lastLCDTime += lcdInterval;
     
-    lcd.setCursor(13,1);
-    lcd.print(currentSpeed);
-    lcd.print("  ");
+    lcd.setCursor(0,0);
+    if(isForward){
+      lcd.print("Dir: Clockwise  ");
+    }
+    else{
+      lcd.print("Dir: C-Clockwise");
+    }
+    
+    //==Telemetry ==
+    unsigned int currentRPM = (16500./255.)*currentSpeed;
+    lcd.setCursor(0,1);
+    lcd.print("RPM: ");
+    lcd.print(currentRPM);
+    lcd.print("   ");
   }
 }
