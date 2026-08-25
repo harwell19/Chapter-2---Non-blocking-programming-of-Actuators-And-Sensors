@@ -1,0 +1,178 @@
+/*
+  Project: 02-Actuators-And-Sensors/02-DC-Motor-L298N-Speed-Control
+  Feature:
+  Non-blocking PWM acceleration/deceleration ramp state machine with toggle switch
+  Author: Harwell Mejia
+  Tutor : GEMINI AND ChatGPT
+  Date:　2026/08/25
+  Hardware:
+  - Arduino UNO
+  - LCD + I2C Driver
+  - L293D Motor Driver + DC Motor
+  - Pins: ENA -> D3 (PWM), IN1 -> D4, IN2 -> D5
+  - Push button x1
+*/
+#include <Wire.h>
+#include <LiquidCrystal_I2C.h>
+#define	BTN_SW 2
+#define	ENA_PIN 3
+#define	IN3_PIN 4
+#define IN4_PIN 5
+#define	greenPin 6
+#define redPin 7
+
+LiquidCrystal_I2C lcd(0x27, 16, 2);
+
+//== Global state parameters ==
+bool systemState = LOW;
+
+//==Motor state parameters ==
+int currentSpeed = 0;
+int speedStep = 10;
+const int speedInterval = 10;
+const int minSpeed = 0;
+const int maxSpeed = 255;
+bool isForward = true;
+
+//== Non-blocking timer parameters
+unsigned long lastStepTime = 0;
+const unsigned long stepInterval = 50;
+
+unsigned long lastLCDTime = 0;
+const unsigned long lcdInterval = 50;
+
+bool lastBTNRead = HIGH;
+bool stableBTNState = HIGH;
+unsigned long btnBounceTime = 0;
+const unsigned long btnDebounceTime = 50;
+
+void setMotorDirection(bool forward){
+  if(forward){
+    digitalWrite(IN3_PIN, HIGH);
+    digitalWrite(IN4_PIN, LOW);
+  }
+  else{
+    digitalWrite(IN3_PIN, LOW);
+    digitalWrite(IN4_PIN, HIGH);
+  }
+}
+
+void setup(){
+  Serial.begin(9600);
+  pinMode(BTN_SW, INPUT_PULLUP);
+  pinMode(ENA_PIN, OUTPUT);
+  pinMode(IN3_PIN, OUTPUT);
+  pinMode(IN4_PIN, OUTPUT);
+  pinMode(redPin, OUTPUT);
+  pinMode(greenPin, OUTPUT);
+  lcd.init();
+  lcd.backlight();
+  
+  //Starting mode
+  Serial.println("\nWelcome to Arduino - Non-blocking series");
+  Serial.println("By Harwell Mejia");
+  lcd.setCursor(0,0);
+  lcd.print("Hi Arduino");
+  
+  analogWrite(ENA_PIN, currentSpeed);
+  digitalWrite(redPin, !systemState);
+  digitalWrite(greenPin, systemState);
+}
+
+void loop(){
+  //==Task 1 - Non-blocking toggle switch==
+  //1.1 Read electrical signal
+  bool currentBTNRead = digitalRead(BTN_SW);
+  //1.2 Detect electrical change
+  if(currentBTNRead != lastBTNRead){
+    lastBTNRead = currentBTNRead;
+    btnBounceTime = millis();
+  }
+  //1.3 Check bounce time
+  unsigned long currentBTNTime = millis();
+  if(currentBTNTime - btnBounceTime >= btnDebounceTime){
+    //1.4 Check stable state
+    if(currentBTNRead != stableBTNState){
+      stableBTNState = currentBTNRead;
+      //1.5 Valid button press
+      if(stableBTNState == LOW){
+        systemState = !systemState;
+        digitalWrite(greenPin, systemState);
+        digitalWrite(redPin, !systemState);
+        //==Telemetry - system state in LCD
+        if(systemState == HIGH){
+          setMotorDirection(isForward);
+          lcd.setCursor(0,1);
+          lcd.print("System: Ready");
+        }
+        else{
+          currentSpeed = 0;
+          analogWrite(ENA_PIN, currentSpeed);
+          digitalWrite(IN3_PIN, LOW);
+          digitalWrite(IN4_PIN, LOW);
+          lcd.setCursor(0,0);
+          lcd.print("System: OFF     ");
+          lcd.setCursor(0,1);
+          lcd.print("                ");
+        }
+      }
+    }
+  }
+  //== Activate devices ==
+  if(systemState == HIGH){
+    
+    //==Task 2 - Non-blocking PWM Timer
+    unsigned long currentStepTime = millis();
+    if(currentStepTime - lastStepTime >= stepInterval){
+      lastStepTime += stepInterval;
+      
+      currentSpeed = constrain(currentSpeed + speedStep, minSpeed, maxSpeed);
+      analogWrite(ENA_PIN, currentSpeed);
+      
+      //Set motor direction
+      // Clockwise direction, then reach top speed
+      if(currentSpeed >= maxSpeed && speedStep > 0){
+        currentSpeed = maxSpeed;
+        speedStep = -speedInterval;
+        Serial.println("Max Speed reached, Breaking...");
+      }
+      //Counter-clockwise when reach min speed, then reverse
+      else if(currentSpeed <= minSpeed && speedStep < 0){
+        currentSpeed = minSpeed;
+        speedStep = speedInterval;
+        isForward = !isForward;
+        setMotorDirection(isForward);
+        Serial.println("Min Speed reach, Reverse");
+      }
+      
+      //Serial Telemetry
+      unsigned long currentRPM = (16500./255.)*currentSpeed;
+      Serial.print("Speed: ");
+      Serial.print(currentRPM);
+      Serial.print(" | ");
+      Serial.print("PWM: ");
+      Serial.println(currentSpeed);
+    }
+    
+    //==Task 3- Non-blocking LCD telemetry refresh
+    unsigned long currentLCDTime = millis();
+    if(currentLCDTime - lastLCDTime >= lcdInterval){
+      lastLCDTime += lcdInterval;
+      
+      lcd.setCursor(0,1);
+      if(isForward){
+        lcd.print("DIR: CLOCKWISE");
+      }
+      else{
+        lcd.print("DIR: C-CLOCKWISE");
+      }
+      
+      //Telemetry
+      unsigned long currentRPM = (16500./255.)*currentSpeed;
+      lcd.setCursor(0,0);
+      lcd.print("RPM: ");
+      lcd.print(currentRPM);
+      lcd.print("            ");
+    }
+  }
+}
