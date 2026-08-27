@@ -1,0 +1,145 @@
+/*
+Project: Non-blocking-EMA-Filter
+Feature: 
+Non-blocking ADC sampling and Exponential Moving Average (EMA) filtering
+Included a non-blocking toggle switch
+Main equation
+y[n] = (a * Xn) + (1-a)(y[n-1])
+a= alpha (Smoothing factor);
+
+Autor: Harwell Mejia
+Tutor: GEMINI
+Date : 2026/08/27
+
+Compiled and run in THINKERCAD
+*/
+
+#include <Wire.h>
+#include <LiquidCrystal_I2C.h>
+#define	POT_PIN A0
+#define BTN_PIN 2
+#define	redPin 3
+#define	greenPin 4
+
+LiquidCrystal_I2C lcd(0x27, 16, 2);
+
+//==Global state == 
+bool systemState = LOW;
+
+//== Potentiometer parameters and variable ==
+//EMA Equiation: Y[n]= (alpha*X[n])+(1-alpha)*(Y[n-1])
+const float alpha = 0.85; // Smoothing factor a; 0.1<a<1
+float filteredValue = 0.0; // Y[n] updated value
+float rawValue = 0.0; // X[n]
+
+unsigned long lastSampleTime = 0;
+const unsigned long sampleInterval = 50; 
+
+//== Non-blocking lcd refresh ==
+unsigned long lastLCDTime = 0;
+const unsigned long lcdInterval = 50;
+
+//==Non-blocking toggle switch==
+bool lastBTNRead = HIGH;
+bool stableBTNState = HIGH;
+unsigned long btnBounceTime = 0;
+const unsigned long btnDebounceDelay = 50;
+
+void setup(){
+  Serial.begin(9600);
+  pinMode(BTN_PIN, INPUT_PULLUP);
+  pinMode(POT_PIN, INPUT);
+  pinMode(redPin, OUTPUT);
+  pinMode(greenPin, OUTPUT);
+  lcd.init();
+  lcd.backlight();
+  
+  //==System initial state==
+  filteredValue = analogRead(POT_PIN);
+  rawValue = analogRead(POT_PIN);
+  
+  digitalWrite(redPin, !systemState);
+  digitalWrite(greenPin, systemState);
+  Serial.println("\nWelcome to Arduino - Non-blocking programing serie");
+  Serial.println("EMA-Filter");
+  Serial.println("By Harwell");
+  Serial.println("Raw Value | Filtered Value");
+  
+  lcd.setCursor(0,0);
+  lcd.print("Hi Arduino");
+}
+
+void loop(){
+  //===Task 1 - Set non-blocking toggle switch ON/OFF
+  //1.1 Read electrical signal
+  bool currentBTNRead = digitalRead(BTN_PIN);
+  //1.2 Detect electrical Change
+  if(currentBTNRead != lastBTNRead){
+    lastBTNRead = currentBTNRead;
+    btnBounceTime = millis();
+  }
+  //1.3 Check bounce time
+  unsigned long currentBTNTime = millis();
+  if(currentBTNTime - btnBounceTime >= btnDebounceDelay){
+    //1.4 Check stable state
+    if(currentBTNRead != stableBTNState){
+      stableBTNState = currentBTNRead;
+      //1.5 Valid button press
+      if(stableBTNState == LOW){
+        systemState = !systemState;
+        digitalWrite(redPin, !systemState);
+        digitalWrite(greenPin, systemState);
+        
+        if(systemState == HIGH){
+          lcd.setCursor(0,0);
+          lcd.print("Hi Arduino");
+          digitalWrite(redPin, !systemState);
+          digitalWrite(greenPin, systemState);
+          Serial.println("System start");
+        }
+        else{
+          lcd.setCursor(0,0);
+          lcd.print("System : OFF");
+          lcd.print("                "); //Clear leftover when turn off
+          lcd.setCursor(0,1);
+          lcd.print("                "); //Clear leftover when turn off
+          Serial.println("System OFF");
+        }
+      }
+    }
+  }
+  //==System ON==
+  if(systemState == HIGH){
+    //===Task 2 - Non-blocking EMA Filter
+    unsigned long currentSampleTime = millis();
+    
+    if(currentSampleTime - lastSampleTime >= sampleInterval){
+      lastSampleTime += sampleInterval;
+      
+      rawValue = analogRead(POT_PIN);
+      filteredValue = (alpha * rawValue) + ((1.0f -  alpha)*(filteredValue));
+      
+      //==Serial monitor telemetry 
+      Serial.print(rawValue);
+      Serial.print("   |   ");
+      Serial.println(filteredValue);
+    }
+    
+    //==Task 3 - EMA Filter displayed on non-blocking lcd refresh
+    unsigned long currentLCDTime = millis();
+    
+    if(currentLCDTime - lastLCDTime >= lcdInterval){
+      lastLCDTime += lcdInterval;
+      
+      //LCD Telemetry
+      lcd.setCursor(0,0);
+      lcd.print("Raw  Val: ");
+      lcd.print((int) rawValue);
+      lcd.print("              "); //Clear leftover values
+      lcd.setCursor(0,1);
+      lcd.print("Filt Val: ");
+      lcd.print((int) filteredValue);
+      lcd.print("              ");
+    }
+  }
+}
