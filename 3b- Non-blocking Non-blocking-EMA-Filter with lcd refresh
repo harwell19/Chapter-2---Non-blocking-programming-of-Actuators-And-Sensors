@@ -1,0 +1,74 @@
+/*
+Project: Non-blocking-EMA-Filter
+Feature: 
+Non-blocking ADC sampling and Exponential Moving Average (EMA) filtering
+Main equation.
+Values displayed on LCD I2C
+y[n] = (a * Xn) + (1-a)(y[n-1])
+a= alpha (Smoothing factor);
+
+Autor: Harwell Mejia
+Tutor: GEMINI
+Date : 2026/08/26
+
+Compiled and run in THINKERCAD
+*/
+#include <Wire.h>
+#include <LiquidCrystal_I2C.h>
+#define	POT_PIN A0
+LiquidCrystal_I2C lcd(0x27, 16, 2);
+
+//==Filter parameter
+const float alpha = 0.85; //smoothing factor *0.01< a <1.0*
+float filteredValue = 0.0;
+
+//==Non-blocking read timer parameters
+unsigned long lastSampleTime = 0;
+const unsigned long sampleInterval = 30;
+
+//==Non-blocking lcd refresh parameters
+unsigned long lastLCDTime = 0;
+const unsigned long lcdInterval = 50;
+
+void setup(){
+  Serial.begin(112500);
+  pinMode(POT_PIN, INPUT);
+  lcd.init();
+  lcd.backlight();
+  
+  //Initialize filter state with first reading
+  filteredValue = analogRead(POT_PIN);
+  Serial.println("ROW | FILTERED");
+}
+
+void loop(){
+  //==Non-blocking EMA Timer==
+  unsigned long currentSampleTime = millis();
+  if(currentSampleTime - lastSampleTime >= sampleInterval){
+    lastSampleTime += sampleInterval;
+    
+    int rawValue = analogRead(POT_PIN);
+    filteredValue = (alpha * rawValue) + (1.0f-alpha)*(filteredValue);
+    
+    //Telemetry
+    Serial.print(rawValue);
+    Serial.print(" | ");
+    Serial.println(filteredValue);
+  }
+  //==Non-blocking lcd refresh==
+  unsigned long currentLCDTime = millis();
+  if(currentLCDTime - lastLCDTime >= lcdInterval){
+    lastLCDTime += lcdInterval;
+    
+    int rawValue = analogRead(POT_PIN);
+    float filteredValued = (alpha * rawValue)+((1.0f - alpha)*(filteredValue));
+    lcd.setCursor(0,0);
+    lcd.print("Raw val: ");
+    lcd.print(analogRead(POT_PIN));
+    lcd.print("    ");
+    lcd.setCursor(0,1);
+    lcd.print("Fil val: ");
+    lcd.print(filteredValue);
+    lcd.print("    ");
+  }
+}
