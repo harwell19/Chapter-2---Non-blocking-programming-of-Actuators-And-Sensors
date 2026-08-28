@@ -1,0 +1,107 @@
+/*
+===========================================================================
+  Project  : Non-Blocking EMA Filter Applied to DC Motor PWM Speed Control
+  File     : main.cpp
+  Author   : Harwell Mejia
+  Tutor    : Gemini
+  Date     : August 2026
+  Toolchain: Arduino C++ (Tested & Simulated in Tinkercad)
+  ===========================================================================
+
+  DESCRIPTION / FEATURES:
+  - Non-blocking ADC sampling & Exponential Moving Average (EMA) filtering
+    to eliminate potentiometer signal noise.
+  - Smooth dynamic PWM speed transition for DC motor speed control.
+  - Independent non-blocking Serial telemetry stream (115200 baud).
+
+  HARDWARE COMPONENTS:
+  - 1x Arduino UNO
+  - 1x L293D H-Bridge Motor Driver IC
+  - 1x Standard DC Motor
+  - 1x 10k Potentiometer (Linear)
+  - 1x 9V Battery (External Motor Power)
+
+  WIRING & PIN MAPPING:
+  - Potentiometer : Signal -> A0 | VCC -> 5V | GND -> GND
+  - L293D Driver  : ENA   -> Pin 5 (PWM Enable 1,2)
+                    IN1   -> Pin 2 (Control Input 1)
+                    IN2   -> Pin 3 (Control Input 2)
+                    VCC1  -> Arduino 5V (Logic Power)
+                    VCC2  -> 9V (+) Battery (Motor Power)
+                    GND   -> Common GND (GND bridged with Arduino GND)
+  - DC Motor      : Terminals -> L293D OUT1 & OUT2
+  
+  ===========================================================================
+*/
+
+#define POT_PIN A0
+#define IN3_PIN 2
+#define IN4_PIN 3
+#define ENA_PIN 5
+
+//==EMA Filter parameter
+// Y[n]= (a X[n])+(1-a)(Y[n-1])
+float filteredValue = 0.0; //Filtered ADC value
+const float alpha =0.25;  //Smoothing factor 0<a<1
+float rawValue = 0;      // Raw read value from potentiometer
+int motorPWM = 0;       // Mapped DC motor value 0-255
+
+//==Non-blocking EMA Filter parameters==
+unsigned long lastSampleTime = 0;
+const unsigned long sampleInterval = 20;
+
+//==Non-blocking Serial telemetry Parameters==
+unsigned long lastSerialTime =0;
+unsigned long serialInterval = 250;
+
+void setup(){
+  Serial.begin(115200);
+  pinMode(POT_PIN, INPUT);
+  pinMode(ENA_PIN, OUTPUT);
+  pinMode(IN3_PIN, OUTPUT);
+  pinMode(IN4_PIN, OUTPUT);
+  
+  //Initial state
+  rawValue = analogRead(POT_PIN);
+  filteredValue = rawValue;
+  
+  //Motor direction
+  digitalWrite(IN3_PIN, HIGH);
+  digitalWrite(IN4_PIN, LOW);
+  
+  Serial.println("\nWelcome to Arduino - State machine");
+  Serial.println("By Harwell Mejia");
+  Serial.println("Motor RPM | PWM | Filtered Val |  Raw Val ");
+}
+void loop(){
+  //===Task 1 - Non-blocking PWM Motor in function of EMA Filter 
+  unsigned long currentSampleTime = millis();
+  if(currentSampleTime - lastSampleTime >= sampleInterval){
+    lastSampleTime += sampleInterval;
+    
+    //Read raw value from potentiometer
+    rawValue = analogRead(POT_PIN);
+    
+    //Apply EMA Filter -> Y[n]=(a X[n])+(1-a)Y[n-1]
+    filteredValue = (alpha * rawValue) + (1.0f - alpha) * filteredValue;
+    
+    motorPWM = (255./1023.) * filteredValue;
+    
+    analogWrite(ENA_PIN, motorPWM);
+  }
+  
+  //===Task 2 - Non-blocking telemetry
+  unsigned long currentSerialTime = millis();
+  if(currentSerialTime - lastSerialTime >= serialInterval){
+    lastSerialTime += serialInterval;
+    
+    unsigned int motorRPM = (16500./255.) * motorPWM; 
+    Serial.print(motorRPM);
+    Serial.print(" | ");
+    Serial.print((int)motorPWM);
+    Serial.print(" | ");
+    Serial.print((int)filteredValue);
+    Serial.print(" | ");
+    Serial.println((int)rawValue);
+  }
+}
