@@ -1,0 +1,138 @@
+/*
+===========================================================================
+  Project  : Non-Blocking EMA Filter Applied to DC Motor PWM Speed Control
+  File     : main.cpp
+  Author   : Harwell Mejia
+  Tutor    : Gemini
+  Date     : August 2026
+  Toolchain: Arduino C++ (Tested & Simulated in Tinkercad)
+  ===========================================================================
+
+  DESCRIPTION / FEATURES:
+  - Non-blocking ADC sampling & Exponential Moving Average (EMA) filtering
+    to eliminate potentiometer signal noise.
+  - Smooth dynamic PWM speed transition for DC motor speed control.
+  - Independent non-blocking LCD refresh telemetry
+  - Independent non-blocking Serial telemetry stream (115200 baud).
+
+  HARDWARE COMPONENTS:
+  - 1x Arduino UNO
+  - 1x L293D H-Bridge Motor Driver IC
+  - 1x Standard DC Motor
+  - 1x LCD Size: 16x2
+  - 1x I2C LCD driver
+  - 1x 10k Potentiometer (Linear)
+  - 1x 9V Battery (External Motor Power)
+
+  WIRING & PIN MAPPING:
+  - Potentiometer : Signal -> A0 | VCC -> 5V | GND -> GND
+  - L293D Driver  : ENA   -> Pin 5 (PWM Enable 1,2)
+                    IN1   -> Pin 2 (Control Input 1)
+                    IN2   -> Pin 3 (Control Input 2)
+                    VCC1  -> Arduino 5V (Logic Power)
+                    VCC2  -> 9V (+) Battery (Motor Power)
+                    GND   -> Common GND (GND bridged with Arduino GND)
+  - DC Motor      : Terminals -> L293D OUT1 & OUT2
+  - LCD+I2C		  : GND	  -> Common Ground
+  					VCC   -> Arduino 5V
+                    SDA	  -> Arduino A4 analog Pin
+                    SCL   -> Arduino A5 analog Pin
+  
+  ===========================================================================
+*/
+#include <Wire.h>
+#include <LiquidCrystal_I2C.h>
+#define POT_PIN A0
+#define IN3_PIN 2
+#define IN4_PIN 3
+#define ENA_PIN 5
+LiquidCrystal_I2C lcd(0x27, 16, 2);
+
+//==EMA Filter parameter
+// Y[n]= (a X[n])+(1-a)(Y[n-1])
+const float alpha = 0.25; //smoothing factor 0<a<1
+float filteredValue = 0; // Updated pot value
+float rawValue = 0; // Raw value coming from potentiometer
+int motorPWM = 0;  //Mapped DC Motor
+
+//==Non-blocking EMA Filter
+unsigned long lastSampleTime = 0;
+const unsigned long sampleInterval = 20;
+
+//==Non-blocking Serial Telemetry
+unsigned long lastSerialTime = 0;
+const unsigned long serialInterval = 250;
+
+//==Non-blocking LCD Telemetry
+unsigned long lastLCDTime = 0;
+const unsigned long lcdInterval = 100;
+
+void setup(){
+  Serial.begin(115200);
+  pinMode(POT_PIN, INPUT);
+  pinMode(ENA_PIN, OUTPUT);
+  pinMode(IN3_PIN, OUTPUT);
+  pinMode(IN4_PIN, OUTPUT);
+  lcd.init();
+  lcd.backlight();
+  
+  //Initial state
+  //Set Motor direction
+  digitalWrite(IN3_PIN, HIGH);
+  digitalWrite(IN4_PIN, LOW);
+  
+  rawValue = analogRead(POT_PIN);
+  filteredValue = rawValue;
+  
+  //Telemetry 
+  Serial.println("\nWelcome to Arduino - State Machine");
+  Serial.println("By Harwell Mejia");
+  Serial.println("RPM  | PWM  |  Filt Val | Raw Val");
+}
+
+void loop(){
+  //==Task 1 - Non-blocking EMA Filter applied to control PWM 
+  unsigned long currentSampleTime = millis();
+  if(currentSampleTime - lastSampleTime >= sampleInterval){
+    lastSampleTime += sampleInterval;
+    
+    rawValue = analogRead(POT_PIN);
+    // EMA Filter calculation Y{n]=(aX[n])+(1-a)Y[n-1]
+    filteredValue = (alpha * rawValue) + (1.0f - alpha)*filteredValue;
+    
+    //Run the DC Motor
+    motorPWM = (255. / 1023.) * filteredValue;
+    analogWrite(ENA_PIN, motorPWM);
+  }
+  //===Task 2 - LCD Telemetry
+  unsigned long currentLCDTime = millis();
+  if(currentLCDTime - lastLCDTime >= lcdInterval){
+    lastLCDTime += lcdInterval;
+    
+    unsigned int motorRPM = (16500./255.)*motorPWM;
+    lcd.setCursor(0,0);
+    lcd.print("Pot Val: ");
+    lcd.print((unsigned int)filteredValue);
+    lcd.print("         "); // Clear leftover trailing digits
+    
+    lcd.setCursor(0,1);
+    lcd.print("RPM: ");
+    lcd.print(motorRPM);
+    lcd.print("         ");// Clear leftover trailing digits
+  }
+  
+  //===Task 3 - Non-blocking Serial telemetry
+  unsigned long currentSerialTime = millis();
+  if(currentSerialTime - lastSerialTime >= serialInterval){
+    lastSerialTime += serialInterval;
+    
+    unsigned int motorRPM = (16500./255.)*motorPWM;
+    Serial.print(motorRPM);
+    Serial.print("  |  ");
+    Serial.print((unsigned int) motorPWM);
+    Serial.print("  |  ");
+    Serial.print(filteredValue);
+    Serial.print("  |  ");
+    Serial.println((unsigned int)rawValue);
+  }
+}
