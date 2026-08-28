@@ -1,0 +1,196 @@
+/*
+===========================================================================
+  Project  : Non-Blocking EMA Filter Applied to DC Motor PWM Speed Control
+  File     : main.cpp
+  Author   : Harwell Mejia
+  Tutor    : Gemini
+  Date     : August 2026
+  Toolchain: Arduino C++ (Tested & Simulated in Tinkercad)
+  ===========================================================================
+
+  DESCRIPTION / FEATURES:
+  - Non-blocking ADC sampling & Exponential Moving Average (EMA) filtering
+    to eliminate potentiometer signal noise.
+  - Smooth dynamic PWM speed transition for DC motor speed control.
+  - Independent non-blocking Serial telemetry stream (115200 baud).
+  - Independent non-blocking LCD refresh telemetry
+
+  HARDWARE COMPONENTS:
+  - 1x Arduino UNO
+  - 1x L293D H-Bridge Motor Driver IC
+  - 1x Push Button
+  - 1x Standard DC Motor
+  - 1x 10k Potentiometer (Linear)
+  - 1x 9V Battery (External Motor Power)
+  - 1X LCD 16x2 + I2C
+
+  WIRING & PIN MAPPING:
+  - Potentiometer : Signal -> A0 | VCC -> 5V | GND -> GND
+  - LCD I2C       : VCC	  -> Arduino 5V
+                  : GND   -> Common GND
+                  : SDA   -> A4
+                  : SCL   -> A5
+  - L293D Driver  : ENA   -> Pin 5 (PWM Enable 1,2)
+                    IN3   -> Pin 2 (Control Input 1)
+                    IN4   -> Pin 3 (Control Input 2)
+                    VCC1  -> Arduino 5V (Logic Power)
+                    VCC2  -> 9V (+) Battery (Motor Power)
+                    GND   -> Common GND (GND bridged with Arduino GND)
+  - DC Motor      : Terminals -> L293D OUT1 & OUT2
+  - Push Button			  -> PIN 6
+  
+  ===========================================================================
+*/
+#include <Wire.h>
+#include <LiquidCrystal_I2C.h>
+#define POT_PIN A0
+#define IN3_PIN 2
+#define IN4_PIN 3
+#define ENA_PIN 5
+#define BTN_PIN 6
+#define redPin 7
+#define greenPin 8
+
+LiquidCrystal_I2C lcd(0x27, 16, 2);
+bool systemState = LOW;
+
+//==EMA Parameters and timer variables
+//Y[n]= (aX[n])+(1-a)Y[n-1]
+float filteredVal = 0.0;
+float rawVal = 0.0;
+const float alpha = 0.25; //Smoothing factor 0<a<1
+unsigned int motorPWM = 0;
+
+unsigned long lastSampleTime = 0;
+const unsigned long sampleInterval = 25;
+
+//==LCD Telemetry parameters==
+unsigned long lastLCDTime = 0;
+const unsigned long lcdInterval = 250;
+
+//==Serial Telemetry parameters==
+unsigned long lastSerialTime = 0;
+const unsigned long serialInterval = 250;
+
+//==Non-blocking toggle switch parameters==
+bool lastBTNRead = HIGH;
+bool stableBTNState =HIGH;
+unsigned long btnBounceTime = 0;
+const unsigned long btnDebounceDelay = 50;
+
+void setup(){
+  Serial.begin(115200);
+  pinMode(BTN_PIN, INPUT_PULLUP);
+  pinMode(POT_PIN, INPUT);
+  pinMode(ENA_PIN, OUTPUT);
+  pinMode(IN3_PIN, OUTPUT);
+  pinMode(IN4_PIN, OUTPUT);
+  pinMode(redPin, OUTPUT);
+  pinMode(greenPin, OUTPUT);
+  lcd.init();
+  lcd.backlight();
+    
+  //Initial state
+  rawVal = analogRead(POT_PIN);
+  filteredVal = rawVal;
+  
+  digitalWrite(redPin, !systemState);
+  digitalWrite(greenPin, systemState);
+  
+  //set motor direction
+  digitalWrite(IN3_PIN, HIGH);
+  digitalWrite(IN4_PIN, LOW);
+  
+  //Telemetry
+  lcd.setCursor(0,0);
+  lcd.print("Hi Arduino");
+  
+  Serial.println("\nWelcome to Arduino - State Machine");
+  Serial.println("By Harwell");
+  
+  Serial.println("RPM  |  PWM  | Filtered Val | raw Val"); 
+}
+
+void loop(){
+  //===Task 1 - Activate non-blocking toggle switch
+  bool currentBTNRead = digitalRead(BTN_PIN);
+  if(currentBTNRead != lastBTNRead){
+    lastBTNRead = currentBTNRead;
+    btnBounceTime = millis();
+  }
+  unsigned long currentBTNTime = millis();
+  if(currentBTNTime - btnBounceTime >= btnDebounceDelay){
+    
+    if(currentBTNRead != stableBTNState){
+      stableBTNState = currentBTNRead;
+      
+      if(stableBTNState == LOW){
+        systemState = !systemState;
+        digitalWrite(redPin, !systemState);
+        digitalWrite(greenPin, systemState);
+        Serial.print("System: ");
+        Serial.println(systemState? "ON":"OFF");
+        
+        if(systemState == HIGH){
+          lastSampleTime = currentBTNTime;
+          lastLCDTime = currentBTNTime;
+          lastSerialTime = currentBTNTime;
+          rawVal = analogRead(POT_PIN);
+          analogWrite(ENA_PIN, motorPWM);
+        }
+        else{
+          motorPWM = 0;
+          analogWrite(ENA_PIN, motorPWM);
+          lcd.setCursor(0,0);
+          lcd.print("System OFF  ");
+          lcd.setCursor(0,1);
+          lcd.print("             ");
+        }
+      }
+    }
+  }
+    if(systemState == HIGH){
+      //==Task 2 - non-blocking EMA Filter
+      unsigned long currentSampleTime = millis();
+      if(currentSampleTime - lastSampleTime >= sampleInterval){
+        lastSampleTime += sampleInterval;
+        
+        rawVal = analogRead(POT_PIN);
+        filteredVal = (alpha * rawVal) + (1.0f - alpha) * filteredVal;
+        
+        //Controlling motor speed
+        motorPWM = (255./1023.) * filteredVal;
+        analogWrite(ENA_PIN, motorPWM);
+      }
+      
+      //==Task 3 - Non-blocking LCD refresh - telemetry
+      unsigned long currentLCDTime = millis();
+      if(currentLCDTime - lastLCDTime >= lcdInterval){
+        lastLCDTime += lcdInterval;
+        
+        unsigned int currentSpeed = (16500./255.)* motorPWM;
+        lcd.setCursor(0,0);
+        lcd.print("RPM: ");
+        lcd.print(currentSpeed);
+        lcd.print("          ");
+        
+        lcd.setCursor(0,1);
+        lcd.print("Pot Val: ");
+        lcd.print((int)filteredVal);
+        lcd.print("          ");
+      }
+      unsigned long currentSerialTime = millis();
+      if(currentSerialTime - lastSerialTime >= serialInterval){
+        lastSerialTime += serialInterval;
+        
+        unsigned int currentSpeed = (16500./255.)* motorPWM;
+        Serial.print(currentSpeed);
+        Serial.print("  |  ");
+        Serial.print(motorPWM);
+        Serial.print("  |  ");
+        Serial.print((float)filteredVal);
+        Serial.print("  |  ");
+        Serial.println((unsigned int)rawVal);
+      }
+    }
+  }
