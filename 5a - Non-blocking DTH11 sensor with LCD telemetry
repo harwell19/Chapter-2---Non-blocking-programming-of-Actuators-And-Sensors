@@ -1,0 +1,78 @@
+/*
+  Project: 02-Actuators-And-Sensors/
+  			02-Non-blocking DTH11 with LCD telemetry
+  Feature: 
+   - Non-Blocking temperature and humidity sensor DTH11
+   - non-blocking LCD refresh for telemetry
+   - Non- blocking Serial telemetry
+
+  Author: Harwell Mejia
+  Hardware:
+  - Arduino UNO
+  - DTH11 Sensor
+  - LCD with I2C driver
+
+  Date:
+  2026/09
+  compiled and simulated in Cirkit Designer
+  https://app.cirkitdesigner.com/project/991e5295-b7d4-48fe-9a48-c016c1619ca0
+*/
+#include <Wire.h>
+#include <LiquidCrystal_I2C.h>
+#include <DHT.h>
+#define dhtPin 4
+#define DHTTYPE DHT11
+
+DHT dht(dhtPin, DHTTYPE);
+LiquidCrystal_I2C lcd(0x27, 16, 2);
+
+//==Non-blocking Serial telemetry parameters
+unsigned long lastSerialTime = 0;
+const unsigned long serialInterval = 250;
+
+//==Non-blocking lcd refresh Telemetry parameters
+unsigned long lastLCDTime = 0;
+const unsigned long lcdInterval = 250;
+
+void setup(){
+    Serial.begin(115200);
+    lcd.begin(16,2);
+    lcd.backlight();
+    dht.begin();
+    Serial.println("\nWelcome to Arduino - Non-blocking Series DHT SENSOR");
+    Serial.println("By Harwell Mejia");
+    Serial.println("Temperature degC | Humidity %");
+
+    lastSerialTime = millis();
+    lastLCDTime = millis();
+}
+
+void loop(){
+    float temperature = dht.readTemperature();
+    float humidity = dht.readHumidity();
+
+    unsigned long currentSerialTime = millis();
+    if(currentSerialTime - lastSerialTime >= serialInterval){
+        lastSerialTime += serialInterval;
+
+        Serial.print(temperature);
+        Serial.print("  |  ");
+        Serial.println(humidity);
+    }
+
+    unsigned long currentLCDTime = millis();
+    if(currentLCDTime - lastLCDTime >= lcdInterval){
+        lastLCDTime += lcdInterval;
+
+        lcd.setCursor(0,0);
+        lcd.print("Temp C: ");
+        lcd.print(temperature);
+        lcd.print("              ");
+        
+        lcd.setCursor(0,1);
+        lcd.print("Humidity %: ");
+        lcd.print(humidity);
+        lcd.print("              ");
+    }
+
+}
