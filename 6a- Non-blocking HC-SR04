@@ -1,0 +1,101 @@
+/*
+Project: Non-blocking HC-SR04
+Feature:
+Non-blocking distance sensor
+Date: 2026/09/11
+Simulated in ThinkerCad
+*/
+#define echoPin 2
+#define trigPin 3
+
+unsigned long pinTravelTime;
+
+//===Non-blocking HC-SR04 State machine
+enum SensorState{ IDLE, TRIGGERING, WAIT_FOR_ECHO};
+SensorState sensorState = IDLE;
+
+unsigned long lastSensorTime = 0;
+const unsigned long sensorInterval = 60;
+unsigned long trigStartMicros = 0;
+unsigned long echoStartMicros = 0;
+
+const unsigned long trigInterval = 10;
+
+//==Non-blocking telemetry ==
+
+unsigned long lastSerialTime = 0;
+const unsigned long serialInterval = 100;
+
+void setup(){
+  Serial.begin(115200);
+  pinMode(trigPin, OUTPUT);
+  pinMode(echoPin, INPUT);
+  
+  digitalWrite(trigPin, LOW);
+  lastSensorTime = millis();
+  lastSerialTime = millis();
+}
+
+void loop(){
+  unsigned long currentMillis = millis();
+  //==Non-blocking HC-SR04 State machine ==
+  switch(sensorState){
+    case IDLE:
+    //Start a new measuring cycle every "sensorInterval"
+    if(currentMillis - lastSensorTime >= sensorInterval){
+      lastSensorTime += sensorInterval;
+      
+      //Step 1. Ensure trig is low before sending pulse
+      digitalWrite(trigPin, LOW);
+      trigStartMicros = micros();
+      sensorState = TRIGGERING;
+    }
+    break;
+    
+    case TRIGGERING:
+    //Step 2. Send a xtime (microseconds) HIGH PULSE
+    digitalWrite(trigPin, HIGH);
+    if(micros() - trigStartMicros >= trigInterval){
+      
+      digitalWrite(trigPin, LOW);
+      sensorState = WAIT_FOR_ECHO;
+      
+      trigStartMicros += trigInterval;
+    }
+    break;
+    
+    case WAIT_FOR_ECHO:
+    //Step 3. Check if ECHO goes HIGH
+    if(digitalRead(echoPin) == HIGH){
+      echoStartMicros = micros();
+      
+      while(digitalRead(echoPin) == HIGH){
+        if(micros() - echoStartMicros > 30000UL){
+          pinTravelTime = 0;
+          sensorState = IDLE;
+          break;
+        }
+      }
+      if(digitalRead(echoPin) == LOW){
+        pinTravelTime = micros()- echoStartMicros;
+      }
+      sensorState = IDLE;
+    }
+    
+    else if(micros() - trigStartMicros >= 30000UL){
+      pinTravelTime = 0;
+      sensorState = IDLE;
+    }
+    break;
+  }
+  
+  if(currentMillis - lastSerialTime >= serialInterval){
+    lastSerialTime += serialInterval;
+    
+    //Speed of Sound = 1,234.8km/h --> 0.343 mm/uS
+    float distance = (float) pinTravelTime * 0.343f / 2.0f;
+    Serial.print("Distance: ");
+    Serial.print(distance);
+    Serial.println(" mm");
+  }
+}
