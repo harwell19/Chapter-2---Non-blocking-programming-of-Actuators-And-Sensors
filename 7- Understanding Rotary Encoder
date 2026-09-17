@@ -1,0 +1,77 @@
+/*
+Project : Understanding Rotary Encoder
+Feature:
+Rotary encoder counter
+Non-blocking toggle pin 
+
+Author: Harwell Mejia
+Tutor: GEMINI
+Date: 2026/09/17
+
+Compiled and simulated in CirkitDesigner
+https://app.cirkitdesigner.com/project/7c3b2a9e-7230-4825-a7e4-b216ddbc80d3
+*/
+#define CLK_PIN 2
+#define DT_PIN 3
+#define BTN_PIN 4
+
+int encoderPos = 0;
+bool lastCLKState;
+
+//Non-blocking BTN
+bool BTNState = HIGH;
+bool lastBTNRead = HIGH;
+unsigned long btnBounceTime = 0;
+const unsigned long debounceDelay = 50;
+
+unsigned int btnCounter = 0;
+
+void setup(){
+    Serial.begin(115200);
+    pinMode(CLK_PIN, INPUT_PULLUP);
+    pinMode(DT_PIN, INPUT_PULLUP);
+    pinMode(BTN_PIN, INPUT_PULLUP);
+
+    lastCLKState = digitalRead(CLK_PIN);
+}
+
+void loop(){
+    bool currentCLKState = digitalRead(CLK_PIN);
+    //Detect transition in the CLK PIN
+    if(currentCLKState != lastCLKState){
+        if(currentCLKState == LOW){
+            //Check DT to determine direction
+            if(digitalRead(DT_PIN) == HIGH){
+                encoderPos++;
+                Serial.println(encoderPos);
+            }
+            else{
+                encoderPos--;
+                Serial.println(encoderPos);
+            }
+        }
+        lastCLKState = currentCLKState;
+    }
+
+    //==Non-blocking toggle==
+    bool currentBTNRead = digitalRead(BTN_PIN);
+    //Detect electrical change
+    if(currentBTNRead != lastBTNRead){
+        lastBTNRead = currentBTNRead;
+        btnBounceTime = millis();
+    }
+    //Check bounce time
+    if(millis() - btnBounceTime >= debounceDelay){
+        bool verfiedRead = digitalRead(BTN_PIN);
+        //Check stable button state
+        if(verfiedRead != BTNState){
+            BTNState = verfiedRead;
+            //Valid button press
+            if(BTNState == LOW){
+                btnCounter++;
+                Serial.print("Button Pressed: ");
+                Serial.println(btnCounter);
+            }
+        }
+    }
+}
