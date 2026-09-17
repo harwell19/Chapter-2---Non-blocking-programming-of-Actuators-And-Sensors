@@ -1,0 +1,104 @@
+/*
+Project : Understanding Rotary Encoder
+Feature:
+Rotary encoder counter
+Non-blocking toggle pin 
+Non-blocking LCD refresh
+Telemetry is based on the data coming from the rotary encoder
+
+Author: Harwell Mejia
+Tutor: GEMINI
+Date: 2026/09/17
+
+Compiled and simulated in CirkitDesigner
+*/
+#include <Wire.h>
+#include <LiquidCrystal_I2C.h>
+#define CLK_PIN 2
+#define DT_PIN 3
+#define BTN_PIN 4
+
+LiquidCrystal_I2C lcd(0x27, 16, 2);
+
+//== R-E state parameters
+bool lastCLKState;
+int encoderPos = 0;
+unsigned int btnCount = 0;
+
+//== Non-blocking toggle parameters
+bool lastBTNRead = HIGH;
+bool btnState = HIGH;
+unsigned long btnBounceTime = 0;
+const unsigned long debounceDelay = 50;
+
+//==Non-blocking lcd refresh parameters
+unsigned long lastLCDTime = 0;
+const unsigned long lcdInterval = 150;
+
+void setup(){
+    Serial.begin(115200);
+    pinMode(CLK_PIN, INPUT_PULLUP);
+    pinMode(DT_PIN, INPUT_PULLUP);
+    pinMode(BTN_PIN, INPUT_PULLUP);
+    lcd.begin(16,2);
+    lcd.backlight();
+
+    //Initial State
+    lastLCDTime = millis();
+
+    Serial.println("\nWelcome to Arduino - State Machine Series");
+    Serial.println("By Harwell Mejia");
+
+    lcd.setCursor(0,0);
+    lcd.print("Level: 0");
+    lcd.setCursor(0,1);
+    lcd.print("BTN pressed: 0");
+}
+
+void loop(){
+    bool currentCLKState = digitalRead(CLK_PIN);
+    if(currentCLKState != lastCLKState){
+        if(currentCLKState == LOW){
+            if(digitalRead(DT_PIN) == HIGH){
+                encoderPos++;
+                Serial.print("Level: ");
+                Serial.println(encoderPos);
+                lcd.setCursor(0,0);
+                lcd.print("Level: ");
+                lcd.print(encoderPos);
+                lcd.print("              ");
+            }
+            else{
+                encoderPos--;
+                Serial.print("Level: ");
+                Serial.println(encoderPos);
+                lcd.setCursor(0,0);
+                lcd.print("Level: ");
+                lcd.print(encoderPos);
+                lcd.print("              ");
+            }
+        }
+        lastCLKState = currentCLKState;
+    }
+
+    unsigned long currentBTNRead = digitalRead(BTN_PIN);
+    if(currentBTNRead != lastBTNRead){
+        lastBTNRead = currentBTNRead;
+        btnBounceTime = millis();
+    }
+    if(millis() - btnBounceTime >= debounceDelay){
+        bool verifiedRead = digitalRead(BTN_PIN);
+        if(verifiedRead != btnState){
+            btnState = verifiedRead;
+            if(btnState == LOW){
+                btnCount++;
+                Serial.print("BTN Press: ");
+                Serial.println(btnCount);
+                lcd.setCursor(0,1);
+                lcd.print("BTN pressed: ");
+                lcd.print(btnCount);
+                lcd.print("               ");
+            }
+        }
+    }
+}
